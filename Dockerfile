@@ -11,8 +11,8 @@ ARG UNZIP_VERSION="6.0-28ubuntu4.1" # https://packages.ubuntu.com/noble/unzip
 
 # Matlab Runtime  Requirements from https://github.com/mathworks-ref-arch/container-images/tree/main/matlab-runtime-deps/r2024a/ubuntu22.04
 ARG CA_CERTIFICATES_VERSION="20240203" # https://packages.ubuntu.com/noble/ca-certificates
-ARG GSTREAMER1_0_PLUGINS_BASE_VERSION="1.24.2-1ubuntu0.2" # https://packages.ubuntu.com/noble/gstreamer1.0-plugins-base
-ARG GSTREAMER1_0_PLUGINS_GOOD_VERSION="1.24.2-1ubuntu1.1" # https://packages.ubuntu.com/noble/gstreamer1.0-plugins-good
+ARG GSTREAMER1_0_PLUGINS_BASE_VERSION="1.24.2-1ubuntu0.3" # https://packages.ubuntu.com/noble/gstreamer1.0-plugins-base
+ARG GSTREAMER1_0_PLUGINS_GOOD_VERSION="1.24.2-1ubuntu1.2" # https://packages.ubuntu.com/noble/gstreamer1.0-plugins-good
 ARG GSTREAMER1_0_TOOLS_VERSION="1.24.2-1ubuntu0.1" # https://packages.ubuntu.com/noble/gstreamer1.0-tools
 ARG LIBASOUND2T64_VERSION="1.2.11-1ubuntu0.1" # https://packages.ubuntu.com/noble-updates/libasound2t64
 ARG LIBATOMIC1_VERSION="14.2.0-4ubuntu2~24.04" # https://packages.ubuntu.com/noble/libatomic1
@@ -24,11 +24,11 @@ ARG LIBCUPS2T64_VERSION="2.4.7-1.2ubuntu7.3" # https://packages.ubuntu.com/noble
 ARG LIBDRM2_VERSION="2.4.122-1~ubuntu0.24.04.1" # https://packages.ubuntu.com/noble-updates/libdrm2
 ARG LIBFONTCONFIG1_VERSION="2.15.0-1.1ubuntu2" # https://packages.ubuntu.com/noble/libfontconfig1
 ARG LIBFRIBIDI0_VERSION="1.0.13-3build1" # https://packages.ubuntu.com/noble/libfribidi0
-ARG LIBGBM1_VERSION="24.0.5-1ubuntu1" # https://packages.ubuntu.com/noble/libgbm1
+ARG LIBGBM1_VERSION="25.0.7-0ubuntu0.24.04.2" # https://packages.ubuntu.com/noble-updates/libgbm1
 ARG LIBGDK_PIXBUF_2_0_0_VERSION="2.42.10+dfsg-3ubuntu3.2" # https://packages.ubuntu.com/noble/libgdk-pixbuf-2.0-0
 ARG LIBGL1_VERSION="1.7.0-1build1" # https://packages.ubuntu.com/noble/libgl1
 ARG LIBGLIB2_0_0T64_VERSION="2.80.0-6ubuntu3.4" # https://packages.ubuntu.com/noble/libglib2.0-0t64
-ARG LIBGSTREAMER_PLUGINS_BASE1_0_0_VERSION="1.24.2-1ubuntu0.2" # https://packages.ubuntu.com/noble/libgstreamer-plugins-base
+ARG LIBGSTREAMER_PLUGINS_BASE1_0_0_VERSION="1.24.2-1ubuntu0.3" # https://packages.ubuntu.com/noble/libgstreamer-plugins-base1.0-0
 ARG LIBGSTREAMER1_0_0_VERSION="1.24.2-1ubuntu0.1" # https://packages.ubuntu.com/noble/libgstreamer1.0-0
 ARG LIBGTK_3_0T64_VERSION="3.24.41-4ubuntu1.1" # https://packages.ubuntu.com/noble/libgtk-3-0t64
 ARG LIBGTK2_0_0T64_VERSION="2.24.33-4ubuntu1.1" # https://packages.ubuntu.com/noble/libgtk2.0-0t64
@@ -62,6 +62,10 @@ ARG PROCPS_VERSION="2:4.0.4-4ubuntu3.2" # https://packages.ubuntu.com/noble-upda
 ARG UNZIP_VERSION="6.0-28ubuntu4.1" # https://packages.ubuntu.com/noble/unzip
 ARG ZLIB1G_VERSION="1:1.3.dfsg-3.1ubuntu2.1" # https://packages.ubuntu.com/noble-updates/zlib1g
 
+# Segment Anything Model
+ARG GIT_VERSION="1:2.43.0-1ubuntu7.3" # https://packages.ubuntu.com/noble-updates/git
+ARG PYTHON3_FULL_VERSION="3.12.3-0ubuntu2" # https://packages.ubuntu.com/noble-updates/python3-full
+ARG PYTHON3_PIP_VERSION="24.0+dfsg-1ubuntu1.2" # https://packages.ubuntu.com/noble-updates/python3-pip
 # Base Install to download and process applications.
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     curl=${CURL_VERSION} \
@@ -149,5 +153,21 @@ RUN mkdir /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude \
     && mv /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6 /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6.0.28 /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude
 
 ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/matlabruntime/R2024a/runtime/glnxa64:/opt/matlabruntime/R2024a/bin/glnxa64:/opt/matlabruntime/R2024a/sys/os/glnxa64:/opt/matlabruntime/R2024a/sys/opengl/lib/glnxa64"
+
+RUN apt-get -y update && apt-get install -y --no-install-recommends \
+    git=${GIT_VERSION} \
+    ca-certificates=${CA_CERTIFICATES_VERSION} \
+    python3-full=${PYTHON3_FULL_VERSION} \
+    python3-pip=${PYTHON3_PIP_VERSION} \ 
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*  
+
+# Create sam4mib
+RUN python3 -m venv /opt/sam4mib
+
+# Enable venv and add it to the path
+ENV PATH="/opt/sam4mib/bin:$PATH"
+# Install sam2
+RUN pip3 install --no-cache-dir git+https://github.com/facebookresearch/sam2.git
 
 CMD ["/mib2/MIB"]

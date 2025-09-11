@@ -22,3 +22,10 @@ To use with apptainer, please use the following command:
 To use with docker, please use the following command:
 
 `docker run quay.io/rosalindfranklininstitute/mib-container`
+
+### Paths to SAM2 (https://github.com/facebookresearch/sam2)
+
+The paths to use for SAM2 are:
+
+- Python Installation Path: `/opt/sam4mib/bin/python3.12` 
+- Path to Segment Anything 2 Installation: `/opt/sam4mib/lib/python3.12/site-packages/` 
