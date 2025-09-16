@@ -3,7 +3,7 @@ ARG UBUNTU_VERSION=24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=Europe/London
 
-FROM ubuntu:${UBUNTU_VERSION}
+FROM ubuntu:${UBUNTU_VERSION} AS matlab
 
 # Base Install to download and process applications.
 ARG CURL_VERSION="8.5.0-2ubuntu10.6" # https://packages.ubuntu.com/noble/curl
@@ -20,7 +20,7 @@ ARG LIBC6_VERSION="2.39-0ubuntu8.5" # https://packages.ubuntu.com/noble/libc6
 ARG LIBCAIRO_GOBJECT2_VERSION="1.18.0-3build1" # https://packages.ubuntu.com/noble/libcairo-gobject2
 ARG LIBCAIRO2_VERSION="1.18.0-3build1" # https://packages.ubuntu.com/noble/libcairo2
 ARG LIBCAP2_VERSION="1:2.66-5ubuntu2.2" # https://packages.ubuntu.com/noble/libcap2
-ARG LIBCUPS2T64_VERSION="2.4.7-1.2ubuntu7.3" # https://packages.ubuntu.com/noble/libcups2t64
+ARG LIBCUPS2T64_VERSION="2.4.7-1.2ubuntu7.4" # https://packages.ubuntu.com/noble/libcups2t64
 ARG LIBDRM2_VERSION="2.4.122-1~ubuntu0.24.04.1" # https://packages.ubuntu.com/noble-updates/libdrm2
 ARG LIBFONTCONFIG1_VERSION="2.15.0-1.1ubuntu2" # https://packages.ubuntu.com/noble/libfontconfig1
 ARG LIBFRIBIDI0_VERSION="1.0.13-3build1" # https://packages.ubuntu.com/noble/libfribidi0
@@ -62,10 +62,6 @@ ARG PROCPS_VERSION="2:4.0.4-4ubuntu3.2" # https://packages.ubuntu.com/noble-upda
 ARG UNZIP_VERSION="6.0-28ubuntu4.1" # https://packages.ubuntu.com/noble/unzip
 ARG ZLIB1G_VERSION="1:1.3.dfsg-3.1ubuntu2.1" # https://packages.ubuntu.com/noble-updates/zlib1g
 
-# Segment Anything Model
-ARG GIT_VERSION="1:2.43.0-1ubuntu7.3" # https://packages.ubuntu.com/noble-updates/git
-ARG PYTHON3_FULL_VERSION="3.12.3-0ubuntu2" # https://packages.ubuntu.com/noble-updates/python3-full
-ARG PYTHON3_PIP_VERSION="24.0+dfsg-1ubuntu1.2" # https://packages.ubuntu.com/noble-updates/python3-pip
 # Base Install to download and process applications.
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     curl=${CURL_VERSION} \
@@ -74,21 +70,6 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     # Clean up and remove cache to reduce the image size.
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* 
-
-# Get and install the R2024a matlab runtime.    
-# https://uk.mathworks.com/products/compiler/matlab-runtime.html
-RUN curl -L0 --output matlab_runtime.zip https://ssd.mathworks.com/supportfiles/downloads/R2024a/Release/7/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2024a_Update_7_glnxa64.zip \
-    && unzip matlab_runtime.zip -d matlab_runtime \
-    && ./matlab_runtime/install -destinationFolder /opt/matlabruntime -agreeToLicense yes \ 
-    && rm matlab_runtime.zip \ 
-    && rm -rf matlab_runtime
-
-# Get and install the MIB2 for the R2024a matlab runtime.
-# The files are placed on the github repo: https://github.com/Ajaxels/MIB2/
-RUN curl -L0 --output MIB2.zip  https://github.com/Ajaxels/MIB2/releases/download/v2.91/MIB2_Linux_29102_files_R2024a.zip \
-    && unzip MIB2.zip -d /mib2 \
-    && rm MIB2.zip \
-    && apt-get purge curl -y 
 
 # Matlab Runtime  Requirements from https://github.com/mathworks-ref-arch/container-images/tree/main/matlab-runtime-deps/r2024a/ubuntu22.04
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
@@ -146,13 +127,36 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# A fix to ensure that MIB2 runs.
+# Get and install the R2024a matlab runtime.    
+# https://uk.mathworks.com/products/compiler/matlab-runtime.html
+RUN curl -L0 --output matlab_runtime.zip https://ssd.mathworks.com/supportfiles/downloads/R2024a/Release/7/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2024a_Update_7_glnxa64.zip \
+    && unzip matlab_runtime.zip -d matlab_runtime \
+    && ./matlab_runtime/install -destinationFolder /opt/matlabruntime -agreeToLicense yes \ 
+    && rm matlab_runtime.zip \ 
+    && rm -rf matlab_runtime
 
+FROM matlab AS mib
+
+# Get and install the MIB2 for the R2024a matlab runtime.
+# The files are placed on the github repo: https://github.com/Ajaxels/MIB2/
+RUN curl -L0 --output MIB2.zip  https://github.com/Ajaxels/MIB2/releases/download/v2.91/MIB2_Linux_29102_files_R2024a.zip \
+    && unzip MIB2.zip -d /mib2 \
+    && rm MIB2.zip \
+    && apt-get purge curl -y 
+
+# A fix to ensure that MIB2 runs.
 # https://github.com/mohammaddehnavi/mohi-docs/blob/main/Matlab/README.md#fix-install-matlab    
 RUN mkdir /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude \
     && mv /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6 /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6.0.28 /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude
 
 ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/matlabruntime/R2024a/runtime/glnxa64:/opt/matlabruntime/R2024a/bin/glnxa64:/opt/matlabruntime/R2024a/sys/os/glnxa64:/opt/matlabruntime/R2024a/sys/opengl/lib/glnxa64"
+
+FROM mib AS mib-sam
+
+# Segment Anything Model
+ARG GIT_VERSION="1:2.43.0-1ubuntu7.3" # https://packages.ubuntu.com/noble-updates/git
+ARG PYTHON3_FULL_VERSION="3.12.3-0ubuntu2" # https://packages.ubuntu.com/noble-updates/python3-full
+ARG PYTHON3_PIP_VERSION="24.0+dfsg-1ubuntu1.2" # https://packages.ubuntu.com/noble-updates/python3-pip
 
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     git=${GIT_VERSION} \
