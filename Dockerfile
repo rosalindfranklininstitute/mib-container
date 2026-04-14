@@ -133,6 +133,8 @@ RUN cp -n /opt/segment-anything-2/sam2/configs/sam2/*.yaml \
        /opt/segment-anything-2/sam2/ \
     && cp -n /opt/segment-anything-2/sam2/configs/sam2.1/*.yaml \
        /opt/segment-anything-2/sam2/
- 
+
+COPY Matlab /root/Matlab
+
 CMD ["/mib2/MIB"]
 
