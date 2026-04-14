@@ -100,6 +100,7 @@ FROM mib AS mib-sam
 # Use forked distribution checked against MIB: https://github.com/Ajaxels/segment-anything-2
 # Installation follows https://mib.helsinki.fi/downloads_systemreq_sam2.html
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
+	curl \
     git \
     ca-certificates \
     python3-full \
@@ -139,8 +140,8 @@ COPY Matlab /root/Matlab
 # Get default SAM2 models
 RUN curl -L -o /tmp/sam2_hiera_tiny.pt \
     https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.pt \
-    && curl -L -o /tmp/sam2_hiera_tiny.yaml \
-    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.yaml
+    && curl -L -o /tmp/sam2_hiera_t.yaml \
+    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_t.yaml
 
 CMD ["/mib2/MIB"]
 
