@@ -10,6 +10,7 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     unzip \
+	wget \
     # Clean up and remove cache to reduce the image size.
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* 
