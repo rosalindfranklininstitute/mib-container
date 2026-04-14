@@ -10,7 +10,6 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     unzip \
-	wget \
     # Clean up and remove cache to reduce the image size.
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* 
@@ -138,9 +137,9 @@ RUN cp -n /opt/segment-anything-2/sam2/configs/sam2/*.yaml \
 # Copy saved MIB2 preferences (Python and SAM2 paths) 
 COPY Matlab /root/Matlab
 # Get default SAM2 models
-RUN wget -q -P /tmp/ \
+RUN curl -L -o /tmp/sam2_hiera_tiny.pt \
     https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.pt \
-    && wget -q -P /tmp/ \
+    && curl -L -o /tmp/sam2_hiera_tiny.yaml \
     https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.yaml
 
 CMD ["/mib2/MIB"]
