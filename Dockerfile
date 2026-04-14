@@ -134,7 +134,13 @@ RUN cp -n /opt/segment-anything-2/sam2/configs/sam2/*.yaml \
     && cp -n /opt/segment-anything-2/sam2/configs/sam2.1/*.yaml \
        /opt/segment-anything-2/sam2/
 
+# Copy saved MIB2 preferences (Python and SAM2 paths) 
 COPY Matlab /root/Matlab
+# Get default SAM2 models
+RUN wget -q -P /tmp/ \
+    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.pt \
+    && wget -q -P /tmp/ \
+    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.yaml
 
 CMD ["/mib2/MIB"]
 
