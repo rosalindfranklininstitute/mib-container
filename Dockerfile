@@ -1,20 +1,17 @@
-ARG UBUNTU_VERSION=24.04
-
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=Europe/London
 
-FROM ubuntu:${UBUNTU_VERSION} AS matlab
+FROM ubuntu:24.04 AS matlab
 
-# Base Install to download and process applications.
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     unzip \
-    # Clean up and remove cache to reduce the image size.
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
-# Matlab Runtime Requirements from https://github.com/mathworks-ref-arch/container-images/tree/main/matlab-runtime-deps/r2024a/ubuntu22.04
+# MATLAB Runtime dependencies
+# https://github.com/mathworks-ref-arch/container-images/tree/main/matlab-runtime-deps/r2024a/ubuntu22.04
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gstreamer1.0-plugins-base \
@@ -70,27 +67,27 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install R2024a matlab runtime
-# https://uk.mathworks.com/products/compiler/matlab-runtime.html
+# Install MATLAB Runtime R2024a
 RUN curl -L0 --output matlab_runtime.zip https://ssd.mathworks.com/supportfiles/downloads/R2024a/Release/7/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2024a_Update_7_glnxa64.zip \
     && unzip matlab_runtime.zip -d matlab_runtime \
-    && ./matlab_runtime/install -destinationFolder /opt/matlabruntime -agreeToLicense yes \ 
-    && rm matlab_runtime.zip \ 
+    && ./matlab_runtime/install -destinationFolder /opt/matlabruntime -agreeToLicense yes \
+    && rm matlab_runtime.zip \
     && rm -rf matlab_runtime
 
 FROM matlab AS mib
 
 # Install MIB2 for R2024a runtime
 # https://github.com/Ajaxels/MIB2/
-RUN curl -L0 --output MIB2.zip  https://github.com/Ajaxels/MIB2/releases/download/v2.91/MIB2_Linux_29102_files_R2024a.zip \
+RUN curl -L0 --output MIB2.zip https://github.com/Ajaxels/MIB2/releases/download/v2.91/MIB2_Linux_29102_files_R2024a.zip \
     && unzip MIB2.zip -d /mib2 \
-    && rm MIB2.zip \
-    && apt-get purge curl -y 
+    && rm MIB2.zip
 
-# A fix to ensure that MIB2 runs.
-# https://github.com/mohammaddehnavi/mohi-docs/blob/main/Matlab/README.md#fix-install-matlab    
+# Fix for MIB2 runtime
+# https://github.com/mohammaddehnavi/mohi-docs/blob/main/Matlab/README.md#fix-install-matlab
 RUN mkdir /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude \
-    && mv /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6 /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6.0.28 /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude
+    && mv /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6 \
+          /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6.0.28 \
+          /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude
 
 ENV LD_LIBRARY_PATH="/opt/matlabruntime/R2024a/runtime/glnxa64:/opt/matlabruntime/R2024a/bin/glnxa64:/opt/matlabruntime/R2024a/sys/os/glnxa64:/opt/matlabruntime/R2024a/sys/opengl/lib/glnxa64"
 
@@ -100,48 +97,56 @@ FROM mib AS mib-sam
 # Use forked distribution checked against MIB: https://github.com/Ajaxels/segment-anything-2
 # Installation follows https://mib.helsinki.fi/downloads_systemreq_sam2.html
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
-	curl \
+    curl \
     git \
     ca-certificates \
-    python3-full \
-    python3-pip \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    libpython3.11 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
- 
-# Create the sam4mib virtual environment using Python 3.11 (required by MATLAB R2024a)
-RUN python3.11 -m venv /opt/sam4mib
 
-# Enable venv
-ENV PATH="/opt/sam4mib/bin:$PATH"
+# Install Miniforge3 (conda) to the path documented by MIB
+RUN curl -L -o /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+    && bash /tmp/miniforge.sh -b -p /opt/miniforge3 \
+    && rm /tmp/miniforge.sh
 
-# Install requirements for segment-anything-2 use into venv 
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
-    && pip install --no-cache-dir hydra-core iopath
+# Create sam4mib conda environment with Python 3.11
+# Using documented path: /opt/miniforge3/envs/sam4mib
+RUN /opt/miniforge3/bin/conda create -y --prefix /opt/miniforge3/envs/sam4mib python=3.11 \
+    && /opt/miniforge3/bin/conda clean -afy
 
-# Clone the MIB fork of segment-anything-2 (N.B. No pip install)
-RUN git clone https://github.com/Ajaxels/segment-anything-2.git /opt/segment-anything-2
- 
-# Linux fix: copy yaml config files from subdirectories into the main sam2 directory,
-# as required by https://mib.helsinki.fi/downloads_systemreq_sam2.html
-RUN cp -n /opt/segment-anything-2/sam2/configs/sam2/*.yaml \
-       /opt/segment-anything-2/sam2/ \
-    && cp -n /opt/segment-anything-2/sam2/configs/sam2.1/*.yaml \
-       /opt/segment-anything-2/sam2/
+# Install SAM2 dependencies into conda env
+RUN /opt/miniforge3/envs/sam4mib/bin/pip install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
+    && /opt/miniforge3/envs/sam4mib/bin/pip install --no-cache-dir hydra-core iopath
 
-# Copy saved MIB2 preferences (Python and SAM2 paths) 
-COPY Matlab /root/Matlab
+# Clone MIB fork of segment-anything-2 into documented Linux location
+RUN git clone https://github.com/Ajaxels/segment-anything-2.git \
+    /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2
+
+# Linux fix: copy yaml configs as required by MIB documentation
+RUN cp -n /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/configs/sam2/*.yaml \
+          /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/ \
+    && cp -n /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/configs/sam2.1/*.yaml \
+          /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/
+
 # Get default SAM2 models
 RUN curl -L -o /tmp/sam2_hiera_tiny.pt \
     https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.pt \
     && curl -L -o /tmp/sam2_hiera_t.yaml \
     https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_t.yaml
 
-CMD ["/mib2/MIB"]
+# BM3D and BM4D filters for image denoising - LEGACY releases (2021/2015)
+# License: https://webpages.tuni.fi/foi/GCF-BM3D/legal_notice.html
+# Non-profit education / research use only
+RUN mkdir -p /opt/BMxD/BM3D /opt/BMxD/BM4D \
+    && curl -L -o /tmp/bm3d.zip https://webpages.tuni.fi/foi/GCF-BM3D/BM3D.zip \
+    && curl -L -o /tmp/bm4d.zip https://webpages.tuni.fi/foi/GCF-BM3D/BM4D_v3p2.zip \
+    && unzip /tmp/bm3d.zip -d /opt/BMxD/BM3D \
+    && unzip /tmp/bm4d.zip -d /opt/BMxD/BM4D \
+    && rm /tmp/bm3d.zip /tmp/bm4d.zip
 
+# Copy saved MIB2 preferences (Python, BM3D/BM4D and SAM2 paths)
+COPY Matlab /root/Matlab
+
+ENV PATH="/opt/miniforge3/envs/sam4mib/bin:/opt/miniforge3/bin:$PATH"
+
+CMD ["/mib2/MIB"]
