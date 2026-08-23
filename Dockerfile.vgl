@@ -1,0 +1,10 @@
+FROM mib-sam
+
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    wget https://github.com/VirtualGL/virtualgl/releases/download/3.1.4/virtualgl_3.1.4_amd64.deb && \
+    apt-get install -y --no-install-recommends ./virtualgl_3.1.4_amd64.deb && \
+    rm virtualgl_3.1.4_amd64.deb && \
+    apt-get purge -y wget && \
+    rm -rf /var/lib/apt/lists/*
+
+CMD ["vglrun", "/mib3/MIB3"]
