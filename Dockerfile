@@ -8,10 +8,10 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-COPY MIB3_2026-06-03_R2026aSP2_linux.zip /tmp/
-RUN unzip /tmp/MIB3_2026-06-03_R2026aSP2_linux.zip \
-    && mv linux/files /mib3 \
-    && rm -rf linux /tmp/MIB3_2026-06-03_R2026aSP2_linux.zip
+COPY MIB3_Linux_20260820_files.zip /tmp/
+RUN unzip /tmp/MIB3_Linux_20260820_files.zip \
+    && mv deployed/linux/files /mib3 \
+    && rm -rf linux /tmp/MIB3_Linux_20260820_files.zip
 
 FROM mib AS mib-sam
 

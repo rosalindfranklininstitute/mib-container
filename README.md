@@ -13,4 +13,4 @@ By using this container, you agree to the following licenses:
 
 
 ## How to use 
-Please consult the latest documentation https://rosalindfranklininstitute.github.io/volume-em-container-documentation/software/mib3/ 
+Please consult the latest documentation https://rosalindfranklininstitute.github.io/volume-em-container-documentation/software/mib2/ 
