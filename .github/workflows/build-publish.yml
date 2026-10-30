@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mib_version:
-        description: MIB release (e.g. 2026.10) - must match mib_url
+        description: MIB release (e.g. 2026-10) - must match mib_url
         type: string
         required: true
       matlab_release:
@@ -51,7 +51,7 @@ jobs:
           MATLAB_RELEASE: ${{ inputs.matlab_release }}
         run: |
           {
-            echo "version=${MIB_VERSION}-${MATLAB_RELEASE}"
+            echo "version=${MIB_VERSION}_${MATLAB_RELEASE}"
             echo "matlab_release_lc=${MATLAB_RELEASE,,}"
             echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
