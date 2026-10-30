@@ -93,6 +93,9 @@ RUN python -m pip check \
     && python -c "import torch, torchvision, hydra, iopath, sam2; print('torch', torch.__version__, 'cuda', torch.version.cuda, torch.cuda.get_arch_list())"
 RUN python -c "from sam2.build_sam import build_sam2; build_sam2('sam2_hiera_t.yaml', '/opt/segment-anything-2/checkpoints/sam2_hiera_tiny.pt', device='cpu'); print('SAM2 tiny loads')"
 
+# Copy saved MIB2 preferences (Python and SAM2 paths)
+COPY Matlab /root/Matlab
+
 CMD ["/mib3/MIB3"]
 
 # Metadata
