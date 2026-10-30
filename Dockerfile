@@ -75,7 +75,9 @@ RUN mkdir -p /opt/BMxD/BM3D /opt/BMxD/BM4D \
 
 # Copy saved MIB preferences (Python, BM3D/BM4D and SAM2 paths)
 # Used by root (docker) only
-COPY Matlab /root/Matlab
+# COPY Matlab /root/Matlab
+# Copy saved MIB preferences - installation generic
+COPY mib3_prefs_override.mat /mib3/mib3_prefs_override.mat
 
 CMD ["/mib3/MIB3"]
 
