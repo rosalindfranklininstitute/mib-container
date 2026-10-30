@@ -1,0 +1,97 @@
+name: Build MIB container image and publish to Quay.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      mib_version:
+        description: MIB release (e.g. 2026.10) - must match mib_url
+        type: string
+        required: true
+      matlab_release:
+        description: MATLAB release (e.g. R2026a) - must match mib_url
+        type: string
+        required: true
+      mib_url:
+        description: URL of the "Linux_*_files" zip on the MIB3 GitHub release page
+        type: string
+        required: true
+      python_version:
+        description: Python version for the SAM2 environment
+        type: string
+        default: '3.11'
+      sam2_ref:
+        description: Commit or tag of the Ajaxels/segment-anything-2 fork
+        type: string
+        default: '6063f236007ea02e4f97221d87c20b6547aebf4f'
+      torch_index_url:
+        description: PyTorch wheel index (sets the CUDA build of torch)
+        type: string
+        default: 'https://download.pytorch.org/whl/cu128'
+      latest:
+        description: Also tag as latest
+        type: boolean
+        default: false
+
+env:
+  IMAGE: quay.io/rosalindfranklininstitute/mib-container
+
+jobs:
+  build-container:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compute version, lower-case MATLAB release and build timestamp
+        id: meta
+        env:
+          MIB_VERSION: ${{ inputs.mib_version }}
+          MATLAB_RELEASE: ${{ inputs.matlab_release }}
+        run: |
+          {
+            echo "version=${MIB_VERSION}-${MATLAB_RELEASE}"
+            echo "matlab_release_lc=${MATLAB_RELEASE,,}"
+            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v4
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Build and push MIB image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ inputs.latest && format('{0}:latest', env.IMAGE) || '' }}
+          build-args: |
+            MATLAB_RELEASE=${{ inputs.matlab_release }}
+            MATLAB_RELEASE_LC=${{ steps.meta.outputs.matlab_release_lc }}
+            MIB_VERSION=${{ inputs.mib_version }}
+            MIB_URL=${{ inputs.mib_url }}
+            PYTHON_VERSION=${{ inputs.python_version }}
+            SAM2_REF=${{ inputs.sam2_ref }}
+            TORCH_INDEX_URL=${{ inputs.torch_index_url }}
+            IMAGE_VERSION=${{ steps.meta.outputs.version }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_CREATED=${{ steps.meta.outputs.created }}
+
+      - name: Sign image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"

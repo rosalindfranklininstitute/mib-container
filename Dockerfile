@@ -1,152 +1,126 @@
-ARG DEBIAN_FRONTEND=noninteractive
-ARG TZ=Europe/London
+ARG MATLAB_RELEASE=R2026a
+ARG MATLAB_RELEASE_LC=r2026a
+ARG MIB_VERSION=2026.10
+# Must contain ${MIB_VERSION}_${MATLAB_RELEASE} e.g. 2026-10_R2026a
+ARG MIB_URL=https://github.com/Ajaxels/MIB3/releases/download/v2026.10.0/MIB3_Linux_2026-10_R2026a_files.zip
+ARG PYTHON_VERSION=3.11
+# MIB-tested fork of segment-anything-2 (commit sha)
+ARG SAM2_REF=6063f236007ea02e4f97221d87c20b6547aebf4f
+# Torch index (torch version auto-resolved by pip). MATLAB R2026a ships CUDA 12.8.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
 
-FROM ubuntu:24.04 AS matlab
+# Matabl runtime base (sets LD_LIBRARY_PATH, TZ=Etc/UTC and DEBIAN_FRONTEND=noninteractive)
+FROM containers.mathworks.com/matlab-runtime:${MATLAB_RELEASE_LC}-full AS base
 
-RUN apt-get -y update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    unzip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# MIB build layer
+FROM base AS mib-builder
+ARG MIB_VERSION
+ARG MATLAB_RELEASE
+ARG MIB_URL
+ARG MIB_SHA256
 
-# MATLAB Runtime dependencies
-# https://github.com/mathworks-ref-arch/container-images/tree/main/matlab-runtime-deps/r2024a/ubuntu22.04
-RUN apt-get -y update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    gstreamer1.0-plugins-base \
-    gstreamer1.0-plugins-good \
-    gstreamer1.0-tools \
-    libasound2t64 \
-    libatomic1 \
-    libc6 \
-    libcairo-gobject2 \
-    libcairo2 \
-    libcap2 \
-    libcups2t64 \
-    libdrm2 \
-    libfontconfig1 \
-    libfribidi0 \
-    libgbm1 \
-    libgdk-pixbuf-2.0-0 \
-    libgl1 \
-    libglib2.0-0t64 \
-    libgstreamer-plugins-base1.0-0 \
-    libgstreamer1.0-0 \
-    libgtk-3-0t64 \
-    libgtk2.0-0t64 \
-    libice6 \
-    libltdl7 \
-    libnettle8t64 \
-    libnspr4 \
-    libnss3 \
-    libpam0g \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libpangoft2-1.0-0 \
-    libpixman-1-0 \
-    libsndfile1 \
-    libtirpc3t64 \
-    libuuid1 \
-    libwayland-client0 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxfont2 \
-    libxft2 \
-    libxinerama1 \
-    libxrandr2 \
-    libxt6t64 \
-    libxtst6 \
-    libxxf86vm1 \
-    net-tools \
-    procps \
-    unzip \
-    zlib1g \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl unzip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install MATLAB Runtime R2024a
-RUN curl -L0 --output matlab_runtime.zip https://ssd.mathworks.com/supportfiles/downloads/R2024a/Release/7/deployment_files/installer/complete/glnxa64/MATLAB_Runtime_R2024a_Update_7_glnxa64.zip \
-    && unzip matlab_runtime.zip -d matlab_runtime \
-    && ./matlab_runtime/install -destinationFolder /opt/matlabruntime -agreeToLicense yes \
-    && rm matlab_runtime.zip \
-    && rm -rf matlab_runtime
+RUN case "${MIB_URL}" in \
+        *"$(echo "${MIB_VERSION}" | tr . -)_${MATLAB_RELEASE}"*) ;; \
+        *) echo "MIB_URL does not match MIB_VERSION=${MIB_VERSION} / MATLAB_RELEASE=${MATLAB_RELEASE}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/mib.zip "${MIB_URL}" \
+    && unzip -q /tmp/mib.zip -d /tmp/mib \
+    && MIB_BIN="$(find /tmp/mib -type f -name MIB3)" \
+    && [ -n "${MIB_BIN}" ] && [ "$(echo "${MIB_BIN}" | wc -l)" = 1 ] \
+    && mv "$(dirname "${MIB_BIN}")" /mib3 \
+    && rm -rf /tmp/mib /tmp/mib.zip
 
-FROM matlab AS mib
+# SAM2 build layer
+FROM base AS sam-builder
+ARG PYTHON_VERSION
+ARG SAM2_REF
+ARG TORCH_INDEX_URL
 
-# Install MIB2 for R2024a runtime
-# https://github.com/Ajaxels/MIB2/
-RUN curl -L0 --output MIB2.zip https://github.com/Ajaxels/MIB2/releases/download/v2.91/MIB2_Linux_29102_files_R2024a.zip \
-    && unzip MIB2.zip -d /mib2 \
-    && rm MIB2.zip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Fix for MIB2 runtime
-# https://github.com/mohammaddehnavi/mohi-docs/blob/main/Matlab/README.md#fix-install-matlab
-RUN mkdir /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude \
-    && mv /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6 \
-          /opt/matlabruntime/R2024a/sys/os/glnxa64/libstdc++.so.6.0.28 \
-          /opt/matlabruntime/R2024a/sys/os/glnxa64/exclude
-
-ENV LD_LIBRARY_PATH="/opt/matlabruntime/R2024a/runtime/glnxa64:/opt/matlabruntime/R2024a/bin/glnxa64:/opt/matlabruntime/R2024a/sys/os/glnxa64:/opt/matlabruntime/R2024a/sys/opengl/lib/glnxa64"
-
-FROM mib AS mib-sam
-
-# Segment Anything Model 2
-# Use forked distribution checked against MIB: https://github.com/Ajaxels/segment-anything-2
-# Installation follows https://mib.helsinki.fi/downloads_systemreq_sam2.html
-RUN apt-get -y update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Miniforge3 (conda) to the path documented by MIB
-RUN curl -L -o /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+# Miniforge
+RUN curl -fsSL -o /tmp/miniforge.sh \
+        https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
     && bash /tmp/miniforge.sh -b -p /opt/miniforge3 \
-    && rm /tmp/miniforge.sh
-
-# Create sam4mib conda environment with Python 3.11
-# Using documented path: /opt/miniforge3/envs/sam4mib
-RUN /opt/miniforge3/bin/conda create -y --prefix /opt/miniforge3/envs/sam4mib python=3.11 \
+    && rm /tmp/miniforge.sh \
+    && /opt/miniforge3/bin/conda create -y -n sam4mib python=${PYTHON_VERSION} pip \
     && /opt/miniforge3/bin/conda clean -afy
 
-# Install SAM2 dependencies into conda env
-RUN /opt/miniforge3/envs/sam4mib/bin/pip install --no-cache-dir \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
-    && /opt/miniforge3/envs/sam4mib/bin/pip install --no-cache-dir hydra-core iopath
+ENV PATH="/opt/miniforge3/envs/sam4mib/bin:${PATH}"
 
-# Clone MIB fork of segment-anything-2 into documented Linux location
-RUN git clone https://github.com/Ajaxels/segment-anything-2.git \
-    /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2
+RUN python -m pip install --no-cache-dir torch torchvision --index-url "${TORCH_INDEX_URL}" \
+    && python -m pip install --no-cache-dir hydra-core iopath
 
-# Linux fix: copy yaml configs as required by MIB documentation
-RUN cp -n /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/configs/sam2/*.yaml \
-          /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/ \
-    && cp -n /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/configs/sam2.1/*.yaml \
-          /opt/miniforge3/envs/sam4mib/lib/python3.11/site-packages/segment-anything-2/sam2/
+# Copy .yaml configs as explaining in installation docs
+RUN git clone https://github.com/Ajaxels/segment-anything-2.git /opt/segment-anything-2 \
+    && git -C /opt/segment-anything-2 checkout "${SAM2_REF}" \
+    && git -C /opt/segment-anything-2 rev-parse HEAD \
+    && python -m pip install --no-cache-dir -e /opt/segment-anything-2 \
+    && cp -n /opt/segment-anything-2/sam2/configs/sam2/*.yaml /opt/segment-anything-2/sam2/ \
+    && cp -n /opt/segment-anything-2/sam2/configs/sam2.1/*.yaml /opt/segment-anything-2/sam2/ \
+    && rm -rf /opt/segment-anything-2/.git
 
-# Get default SAM2 models
-RUN curl -L -o /tmp/sam2_hiera_tiny.pt \
-    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_tiny.pt \
-    && curl -L -o /tmp/sam2_hiera_t.yaml \
-    https://huggingface.co/facebook/sam2-hiera-tiny/resolve/main/sam2_hiera_t.yaml
+# Install default tiny models 
+RUN mkdir -p /opt/segment-anything-2/checkpoints \
+    && curl -fsSL -o /opt/segment-anything-2/checkpoints/sam2_hiera_tiny.pt \
+        https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_tiny.pt \
+    && sha256sum /opt/segment-anything-2/checkpoints/sam2_hiera_tiny.pt
 
-# BM3D and BM4D filters for image denoising - LEGACY releases (2021/2015)
-# License: https://webpages.tuni.fi/foi/GCF-BM3D/legal_notice.html
-# Non-profit education / research use only
-RUN mkdir -p /opt/BMxD/BM3D /opt/BMxD/BM4D \
-    && curl -L -o /tmp/bm3d.zip https://webpages.tuni.fi/foi/GCF-BM3D/BM3D.zip \
-    && curl -L -o /tmp/bm4d.zip https://webpages.tuni.fi/foi/GCF-BM3D/BM4D_v3p2.zip \
-    && unzip /tmp/bm3d.zip -d /opt/BMxD/BM3D \
-    && unzip /tmp/bm4d.zip -d /opt/BMxD/BM4D \
-    && rm /tmp/bm3d.zip /tmp/bm4d.zip
+# Final layer
+FROM base AS prod
+ARG MATLAB_RELEASE
 
-# Copy saved MIB2 preferences (Python, BM3D/BM4D and SAM2 paths)
-COPY Matlab /root/Matlab
+COPY --from=mib-builder /mib3 /mib3
+COPY --from=sam-builder /opt/miniforge3/envs/sam4mib /opt/miniforge3/envs/sam4mib
+COPY --from=sam-builder /opt/segment-anything-2 /opt/segment-anything-2
 
-ENV PATH="/opt/miniforge3/envs/sam4mib/bin:/opt/miniforge3/bin:$PATH"
+ENV PATH="/opt/miniforge3/envs/sam4mib/bin:${PATH}" \
+    CONDA_PREFIX="/opt/miniforge3/envs/sam4mib" \
+    CONDA_DEFAULT_ENV="sam4mib"
 
-CMD ["/mib2/MIB"]
+# Check matlab dir and mib executable is not missing libraries
+RUN test -d "/opt/matlabruntime/${MATLAB_RELEASE}" \
+    && test -x /mib3/MIB3 \
+    && ! ldd /mib3/MIB3 | grep "not found"
+# Import test for sam/torch tools
+RUN python -m pip check \
+    && python -c "import torch, torchvision, hydra, iopath, sam2; print('torch', torch.__version__, 'cuda', torch.version.cuda, torch.cuda.get_arch_list())"
+RUN python -c "from sam2.build_sam import build_sam2; build_sam2('sam2_hiera_t.yaml', '/opt/segment-anything-2/checkpoints/sam2_hiera_tiny.pt', device='cpu'); print('SAM2 tiny loads')"
+
+CMD ["/mib3/MIB3"]
+
+# Metadata
+ARG MATLAB_RELEASE_LC
+ARG MIB_VERSION
+ARG MIB_URL
+ARG MIB_SHA256
+ARG PYTHON_VERSION
+ARG SAM2_REF
+ARG TORCH_INDEX_URL
+ARG IMAGE_VERSION="${MIB_VERSION}-${MATLAB_RELEASE}"
+ARG IMAGE_REVISION=""
+ARG IMAGE_CREATED=""
+
+LABEL org.opencontainers.image.title="RFI/CCP-volumeEM MIB3 with SAM2" \
+      org.opencontainers.image.description="Microscopy Image Browser 3 (Linux compiled, MATLAB Runtime) with a Python environment for Segment Anything 2" \
+      org.opencontainers.image.authors="The Rosalind Franklin Institute, The Collaborative Computational Project for Volume Electron Microscopy" \
+      org.opencontainers.image.source="https://github.com/rosalindfranklininstitute/mib-container" \
+      org.opencontainers.image.documentation="https://rosalindfranklininstitute.github.io/volume-em-container-documentation/software/mib2/" \
+      org.opencontainers.image.licenses="GPL-3.0-only AND LGPL-2.1-only AND LGPL-2.1-or-later AND Apache-2.0 AND BSD-3-Clause AND MIT AND MPL-2.0 AND Python-2.0 AND LicenseRef-MIB-Standalone AND LicenseRef-MATLAB-Runtime AND LicenseRef-NVIDIA-CUDA" \
+      org.opencontainers.image.base.name="containers.mathworks.com/matlab-runtime:${MATLAB_RELEASE_LC}-full" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      org.opencontainers.image.created="${IMAGE_CREATED}" \
+      uk.ac.rfi.mib.version="${MIB_VERSION}" \
+      uk.ac.rfi.mib.url="${MIB_URL}" \
+      uk.ac.rfi.matlab.runtime.release="${MATLAB_RELEASE}" \
+      uk.ac.rfi.python.version="${PYTHON_VERSION}" \
+      uk.ac.rfi.sam2.repository="https://github.com/Ajaxels/segment-anything-2" \
+      uk.ac.rfi.sam2.ref="${SAM2_REF}" \
+      uk.ac.rfi.torch.index.url="${TORCH_INDEX_URL}"
